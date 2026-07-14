@@ -889,19 +889,57 @@ cdef inline intptr_t _get_stream_identifier(intptr_t stream_ptr) except? -1:
     return -tid
 
 
-cpdef MemoryPointer alloc(size):
+cdef inline bint _allocator_accepts_device_id(allocator):
+    # CuPy's own memory pool accepts an explicit device id. Other allocators
+    # may opt in by setting ``_accepts_device_id`` on the callable.
+    if type(getattr(allocator, '__self__', None)) is MemoryPool:
+        return True
+    return bool(getattr(allocator, '_accepts_device_id', False))
+
+
+cpdef MemoryPointer alloc(size, int device_id=-1,
+                          bint device_is_current=False):
     """Calls the current allocator.
 
     Use :func:`~cupy.cuda.set_allocator` to change the current allocator.
 
     Args:
         size (int): Size of the memory allocation.
+        device_id (int): Device on which to allocate. ``-1`` (default) uses
+            the current device. When set, the allocation is placed on that
+            device and the id is forwarded to CuPy's own pool so it can skip
+            re-querying the current device.
+        device_is_current (bool): Internal fast-path flag. When ``True`` the
+            caller guarantees the current device is already ``device_id`` (for
+            example inside a device guard), so no device switch is performed.
+            Do not set this unless that precondition holds.
 
     Returns:
         ~cupy.cuda.MemoryPointer: Pointer to the allocated buffer.
 
     """
-    return get_allocator()(size)
+    cdef int prev
+    allocator = get_allocator()
+    if device_id < 0:
+        return allocator(size)
+    if device_is_current:
+        # The caller guarantees the current device is already ``device_id``,
+        # so skip the switch entirely and let CuPy's pool skip its own lookup.
+        if _allocator_accepts_device_id(allocator):
+            return allocator(size, device_id)
+        return allocator(size)
+    # Public path: make ``device_id`` current so the allocation is correct
+    # regardless of the caller's current device.
+    prev = runtime.getDevice()
+    if device_id != prev:
+        runtime.setDevice(device_id)
+    try:
+        if _allocator_accepts_device_id(allocator):
+            return allocator(size, device_id)
+        return allocator(size)
+    finally:
+        if device_id != prev:
+            runtime.setDevice(prev)
 
 
 cpdef set_allocator(allocator=None):
@@ -1611,7 +1649,7 @@ cdef class MemoryPool:
 
         return self._pools[device.get_device_id()]
 
-    cpdef MemoryPointer malloc(self, size_t size):
+    cpdef MemoryPointer malloc(self, size_t size, int device_id=-1):
         """Allocates the memory, from the pool if possible.
 
         This method can be used as a CuPy memory allocator. The simplest way to
@@ -1626,12 +1664,21 @@ cdef class MemoryPool:
 
         Args:
             size (int): Size of the memory buffer to allocate in bytes.
+            device_id (int): Device whose pool to allocate from. ``-1``
+                (default) uses the current device. When set to a non-negative
+                id, the caller must ensure the current device is already
+                ``device_id``; the pool trusts this to skip querying the
+                current device.
 
         Returns:
             ~cupy.cuda.MemoryPointer: Pointer to the allocated buffer.
 
         """
-        mp = <SingleDeviceMemoryPool>self.device_pool()
+        cdef SingleDeviceMemoryPool mp
+        if device_id < 0:
+            mp = <SingleDeviceMemoryPool>self.device_pool()
+        else:
+            mp = <SingleDeviceMemoryPool>self.device_pool_by_id(device_id)
         return mp.malloc(size)
 
     cpdef free_all_blocks(self, stream=None):

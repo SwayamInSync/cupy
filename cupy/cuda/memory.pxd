@@ -48,7 +48,7 @@ cdef class MemoryPointer:
     cpdef memset_async(self, int value, size_t size, stream=?)
 
 
-cpdef MemoryPointer alloc(size)
+cpdef MemoryPointer alloc(size, int device_id=?, bint device_is_current=?)
 
 
 cpdef set_allocator(allocator=*)
@@ -61,7 +61,7 @@ cdef class MemoryPool:
         tuple _pools
         object _allocator
 
-    cpdef MemoryPointer malloc(self, size_t size)
+    cpdef MemoryPointer malloc(self, size_t size, int device_id=?)
     cpdef free_all_blocks(self, stream=?)
     cpdef free_all_free(self)
     # they call device_pool so they may raise error.
@@ -84,6 +84,17 @@ cdef class MemoryPool:
                 return self._pools[device.get_device_id()]
 
         return self._ensure_pools_and_return_device_pool()
+
+    cdef inline device_pool_by_id(self, int device_id):
+        # Same as device_pool(), but for an explicitly given device id so the
+        # current device does not need to be queried.
+        with cython.critical_section(self):
+            if self._pools is not None:
+                return self._pools[device_id]
+
+        self._ensure_pools_and_return_device_pool()
+        with cython.critical_section(self):
+            return self._pools[device_id]
 
 
 @cython.no_gc
