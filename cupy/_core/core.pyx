@@ -219,7 +219,7 @@ cdef class _ndarray_base:
         raise RuntimeError('Must not be directly instantiated')
 
     def _init(self, shape, dtype=float, memptr=None, strides=None,
-              order='C'):
+              order='C', device_id=-1):
         cdef Py_ssize_t x, itemsize, alloc_size, left, right
         cdef tuple s = internal.get_size(shape)
         del shape
@@ -279,7 +279,9 @@ cdef class _ndarray_base:
 
         # data
         if memptr is None:
-            self.data = memory.alloc(alloc_size)
+            # ``device_id`` (if given) is guaranteed by the caller to be the
+            # current device, so allocation can take the fast path.
+            self.data = memory.alloc(alloc_size, device_id, True)
         else:
             self.data = memptr
 
