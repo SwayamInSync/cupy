@@ -6,6 +6,7 @@ import pytest
 import cupy
 from cupy import cuda
 from cupy import testing
+from cupy.cuda import memory
 
 
 # Factories that build a brand-new array, keyed by name. Each takes the
@@ -105,3 +106,69 @@ class TestDeviceArgument:
     def test_invalid_device_type(self, bad):
         with pytest.raises(TypeError):
             cupy.zeros(3, device=bad)
+
+
+class TestAllocDeviceId:
+
+    @testing.multi_gpu(2)
+    def test_alloc_device_id_is_safe(self):
+        # The public ``alloc`` places the buffer on ``device_id`` regardless
+        # of the current device, and restores the current device.
+        cuda.runtime.setDevice(0)
+        mem = cuda.alloc(256, 1)
+        assert mem.device_id == 1
+        assert cuda.runtime.getDevice() == 0
+
+    def test_alloc_default_uses_current(self):
+        cuda.runtime.setDevice(0)
+        mem = cuda.alloc(256)
+        assert mem.device_id == 0
+
+    @testing.multi_gpu(2)
+    def test_pool_malloc_device_id(self):
+        # ``MemoryPool.malloc`` trusts that the current device already matches.
+        pool = cupy.get_default_memory_pool()
+        with cuda.Device(1):
+            mem = pool.malloc(256, 1)
+        assert mem.device_id == 1
+
+    @testing.multi_gpu(2)
+    def test_user_allocator_without_device_id(self):
+        # A plain ``allocator(size)`` still lands on the right device because
+        # ``alloc`` makes ``device_id`` current before calling it.
+        pool = cupy.get_default_memory_pool()
+        seen = []
+
+        def user_alloc(size):
+            seen.append(cuda.runtime.getDevice())
+            return memory._malloc(size)
+
+        cuda.runtime.setDevice(0)
+        memory.set_allocator(user_alloc)
+        try:
+            mem = cuda.alloc(128, 1)
+        finally:
+            memory.set_allocator(pool.malloc)
+        assert seen == [1]
+        assert mem.device_id == 1
+        assert cuda.runtime.getDevice() == 0
+
+    @testing.multi_gpu(2)
+    def test_user_allocator_opting_in_to_device_id(self):
+        # Allocators may opt in to the device_id signature via a marker.
+        pool = cupy.get_default_memory_pool()
+        got = []
+
+        def user_alloc(size, device_id=-1):
+            got.append(device_id)
+            return memory._malloc(size)
+
+        user_alloc._accepts_device_id = True
+        cuda.runtime.setDevice(0)
+        memory.set_allocator(user_alloc)
+        try:
+            mem = cuda.alloc(128, 1)
+        finally:
+            memory.set_allocator(pool.malloc)
+        assert got == [1]
+        assert mem.device_id == 1
