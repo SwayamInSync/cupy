@@ -923,13 +923,11 @@ cpdef MemoryPointer alloc(size, int device_id=-1,
     if device_id < 0:
         return allocator(size)
     if device_is_current:
-        # The caller guarantees the current device is already ``device_id``,
-        # so skip the switch entirely and let CuPy's pool skip its own lookup.
+        # Caller guarantees the current device is already device_id.
         if _allocator_accepts_device_id(allocator):
             return allocator(size, device_id)
         return allocator(size)
-    # Public path: make ``device_id`` current so the allocation is correct
-    # regardless of the caller's current device.
+    # Make device_id the current device before allocating.
     prev = runtime.getDevice()
     if device_id != prev:
         runtime.setDevice(device_id)

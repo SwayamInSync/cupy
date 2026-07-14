@@ -279,8 +279,7 @@ cdef class _ndarray_base:
 
         # data
         if memptr is None:
-            # ``device_id`` (if given) is guaranteed by the caller to be the
-            # current device, so allocation can take the fast path.
+            # device_id (if given) is guaranteed to be the current device.
             self.data = memory.alloc(alloc_size, device_id, True)
         else:
             self.data = memptr
