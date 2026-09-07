@@ -15,17 +15,24 @@ def _get_device_id(device):
         f'{type(device).__name__!r}')
 
 
-def _on_device(device_id, make):
-    """Runs ``make()`` with ``device_id`` current, then restores the device.
+def _on_device(device, func, *args, **kwargs):
+    """Calls ``func(*args, **kwargs)`` on ``device``, then restores the device.
+
+    Creation functions take this branch only when ``device is not None`` and
+    re-enter themselves with the argument dropped, so the default path costs
+    one ``is not None`` test. Passing ``func`` and its arguments rather than a
+    closure keeps the callers' locals out of cells, which would otherwise slow
+    down the ``device=None`` path as well.
 
     Calls cudart directly and keeps no state, following CuPy's convention of
-    not using a context manager for internal device switches.
+    not wrapping internal device switches in a context manager.
     """
+    dev = _get_device_id(device)
     prev = runtime.getDevice()
-    if device_id != prev:
-        runtime.setDevice(device_id)
+    if dev != prev:
+        runtime.setDevice(dev)
     try:
-        return make()
+        return func(*args, **kwargs)
     finally:
-        if device_id != prev:
+        if dev != prev:
             runtime.setDevice(prev)

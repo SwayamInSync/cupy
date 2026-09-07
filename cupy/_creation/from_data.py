@@ -4,7 +4,7 @@ import numpy
 
 from cupy import _core
 from cupy._core import fusion
-from cupy._creation._device import _get_device_id, _on_device
+from cupy._creation._device import _on_device
 
 
 def array(obj, dtype=None, copy=True, order='K', subok=False, ndmin=0, *,
@@ -56,11 +56,10 @@ def array(obj, dtype=None, copy=True, order='K', subok=False, ndmin=0, *,
     .. seealso:: :func:`numpy.array`
 
     """
-    if device is None:
-        return _core.array(obj, dtype, copy, order, subok, ndmin, blocking)
-    return _on_device(
-        _get_device_id(device),
-        lambda: _core.array(obj, dtype, copy, order, subok, ndmin, blocking))
+    if device is not None:
+        return _on_device(device, array, obj, dtype, copy, order, subok,
+                          ndmin, blocking=blocking)
+    return _core.array(obj, dtype, copy, order, subok, ndmin, blocking)
 
 
 def asarray(a, dtype=None, order=None, *, copy=None, blocking=False,
@@ -101,11 +100,10 @@ def asarray(a, dtype=None, order=None, *, copy=None, blocking=False,
     .. seealso:: :func:`numpy.asarray`
 
     """
-    if device is None:
-        return _core.array(a, dtype, copy, order, blocking=blocking)
-    return _on_device(
-        _get_device_id(device),
-        lambda: _core.array(a, dtype, copy, order, blocking=blocking))
+    if device is not None:
+        return _on_device(device, asarray, a, dtype, order, copy=copy,
+                          blocking=blocking)
+    return _core.array(a, dtype, copy, order, blocking=blocking)
 
 
 def asanyarray(a, dtype=None, order=None, *, copy=None, blocking=False,
@@ -120,11 +118,10 @@ def asanyarray(a, dtype=None, order=None, *, copy=None, blocking=False,
     .. seealso:: :func:`cupy.asarray`, :func:`numpy.asanyarray`
 
     """
-    if device is None:
-        return _core.array(a, dtype, copy, order, blocking=blocking)
-    return _on_device(
-        _get_device_id(device),
-        lambda: _core.array(a, dtype, copy, order, blocking=blocking))
+    if device is not None:
+        return _on_device(device, asanyarray, a, dtype, order, copy=copy,
+                          blocking=blocking)
+    return _core.array(a, dtype, copy, order, blocking=blocking)
 
 
 def ascontiguousarray(a, dtype=None):

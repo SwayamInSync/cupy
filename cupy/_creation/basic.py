@@ -6,7 +6,7 @@ import numpy
 
 import cupy
 from cupy._core.core import empty_like as _empty_like
-from cupy._creation._device import _get_device_id, _on_device
+from cupy._creation._device import _on_device
 from cupy.typing._types import (
     _OrderKACF, _OrderCF, _ShapeLike, DTypeLike, NDArray,
 )
@@ -35,10 +35,9 @@ def empty(
     .. seealso:: :func:`numpy.empty`
 
     """
-    if device is None:
-        return cupy.ndarray(shape, dtype, order=order)
-    return _on_device(_get_device_id(device),
-                      lambda: cupy.ndarray(shape, dtype, order=order))
+    if device is not None:
+        return _on_device(device, empty, shape, dtype, order)
+    return cupy.ndarray(shape, dtype, order=order)
 
 
 def empty_like(
@@ -76,11 +75,10 @@ def empty_like(
     .. seealso:: :func:`numpy.empty_like`
 
     """
-    if device is None:
-        return _empty_like(prototype, dtype, order, subok, shape)
-    return _on_device(
-        _get_device_id(device),
-        lambda: _empty_like(prototype, dtype, order, subok, shape))
+    if device is not None:
+        return _on_device(
+            device, empty_like, prototype, dtype, order, subok, shape)
+    return _empty_like(prototype, dtype, order, subok, shape)
 
 
 def eye(
@@ -113,19 +111,15 @@ def eye(
     .. seealso:: :func:`numpy.eye`
 
     """
+    if device is not None:
+        return _on_device(device, eye, N, M, k, dtype, order)
     if M is None:
         M = N
-
-    def _make():
-        ret = zeros((N, M), dtype=dtype, order=order)
-        if k <= -N or k >= M:
-            return ret
-        ret.diagonal(k).fill(1)
+    ret = zeros((N, M), dtype=dtype, order=order)
+    if k <= -N or k >= M:
         return ret
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    ret.diagonal(k).fill(1)
+    return ret
 
 
 def identity(
@@ -174,14 +168,11 @@ def ones(
     .. seealso:: :func:`numpy.ones`
 
     """
-    def _make():
-        a = cupy.ndarray(shape, dtype, order=order)
-        a.fill(1)
-        return a
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    if device is not None:
+        return _on_device(device, ones, shape, dtype, order)
+    a = cupy.ndarray(shape, dtype, order=order)
+    a.fill(1)
+    return a
 
 
 def ones_like(
@@ -218,14 +209,12 @@ def ones_like(
     .. seealso:: :func:`numpy.ones_like`
 
     """
-    def _make():
-        result = _empty_like(a, dtype, order, subok, shape)
-        result.fill(1)
-        return result
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    if device is not None:
+        return _on_device(
+            device, ones_like, a, dtype, order, subok, shape)
+    result = _empty_like(a, dtype, order, subok, shape)
+    result.fill(1)
+    return result
 
 
 def zeros(
@@ -251,14 +240,11 @@ def zeros(
     .. seealso:: :func:`numpy.zeros`
 
     """
-    def _make():
-        a = cupy.ndarray(shape, dtype, order=order)
-        a.data.memset_async(0, a.nbytes)
-        return a
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    if device is not None:
+        return _on_device(device, zeros, shape, dtype, order)
+    a = cupy.ndarray(shape, dtype, order=order)
+    a.data.memset_async(0, a.nbytes)
+    return a
 
 
 def zeros_like(
@@ -295,14 +281,12 @@ def zeros_like(
     .. seealso:: :func:`numpy.zeros_like`
 
     """
-    def _make():
-        result = _empty_like(a, dtype, order, subok, shape)
-        result.data.memset_async(0, result.nbytes)
-        return result
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    if device is not None:
+        return _on_device(
+            device, zeros_like, a, dtype, order, subok, shape)
+    result = _empty_like(a, dtype, order, subok, shape)
+    result.data.memset_async(0, result.nbytes)
+    return result
 
 
 def full(
@@ -332,20 +316,16 @@ def full(
     .. seealso:: :func:`numpy.full`
 
     """
+    if device is not None:
+        return _on_device(device, full, shape, fill_value, dtype, order)
     if dtype is None:
         if isinstance(fill_value, cupy.ndarray):
             dtype = fill_value.dtype
         else:
             dtype = numpy.array(fill_value).dtype
-
-    def _make():
-        a = cupy.ndarray(shape, dtype, order=order)
-        cupy.copyto(a, fill_value, casting='unsafe')
-        return a
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    a = cupy.ndarray(shape, dtype, order=order)
+    cupy.copyto(a, fill_value, casting='unsafe')
+    return a
 
 
 def full_like(
@@ -384,14 +364,12 @@ def full_like(
     .. seealso:: :func:`numpy.full_like`
 
     """
-    def _make():
-        result = _empty_like(a, dtype, order, subok, shape)
-        cupy.copyto(result, fill_value, casting='unsafe')
-        return result
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    if device is not None:
+        return _on_device(
+            device, full_like, a, fill_value, dtype, order, subok, shape)
+    result = _empty_like(a, dtype, order, subok, shape)
+    cupy.copyto(result, fill_value, casting='unsafe')
+    return result
 
 
 # Array API compatible array.astype wrapper

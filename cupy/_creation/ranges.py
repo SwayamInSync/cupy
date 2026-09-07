@@ -6,7 +6,7 @@ import numpy
 
 import cupy
 from cupy import _core
-from cupy._creation._device import _get_device_id, _on_device
+from cupy._creation._device import _on_device
 from cupy._util import bf16_loop
 
 
@@ -32,6 +32,8 @@ def arange(start, stop=None, step=1, dtype=None, *, device=None):
     .. seealso:: :func:`numpy.arange`
 
     """
+    if device is not None:
+        return _on_device(device, arange, start, stop, step, dtype)
     if dtype is None:
         if any(numpy.dtype(type(val)).kind == 'f'
                for val in (start, stop, step)):
@@ -47,30 +49,24 @@ def arange(start, stop=None, step=1, dtype=None, *, device=None):
         step = 1
 
     size = int(numpy.ceil((stop - start) / step))
+    if size <= 0:
+        return cupy.empty((0,), dtype=dtype)
 
-    def _make():
-        if size <= 0:
-            return cupy.empty((0,), dtype=dtype)
+    if numpy.dtype(dtype).type == numpy.bool_:
+        if size > 2:
+            raise TypeError(
+                'arange() is only supported for booleans '
+                'when the result has at most length 2.'
+            )
+        if size == 2:
+            return cupy.array([start, start - step], dtype=numpy.bool_)
+        else:
+            return cupy.array([start], dtype=numpy.bool_)
 
-        if numpy.dtype(dtype).type == numpy.bool_:
-            if size > 2:
-                raise TypeError(
-                    'arange() is only supported for booleans '
-                    'when the result has at most length 2.'
-                )
-            if size == 2:
-                return cupy.array([start, start - step], dtype=numpy.bool_)
-            else:
-                return cupy.array([start], dtype=numpy.bool_)
-
-        ret = cupy.empty((size,), dtype=dtype)
-        typ = numpy.dtype(dtype).type
-        _arange_ufunc(typ(start), typ(step), ret, dtype=dtype)
-        return ret
-
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    ret = cupy.empty((size,), dtype=dtype)
+    typ = numpy.dtype(dtype).type
+    _arange_ufunc(typ(start), typ(step), ret, dtype=dtype)
+    return ret
 
 
 def _linspace_scalar(start, stop, num=50, endpoint=True, retstep=False,
@@ -167,75 +163,70 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=None,
     """
     if num < 0:
         raise ValueError('linspace with num<0 is not supported')
+    if device is not None:
+        return _on_device(device, linspace, start, stop, num, endpoint,
+                          retstep, dtype, axis)
     div = (num - 1) if endpoint else num
 
-    def _make(start=start, stop=stop, dtype=dtype):
-        scalar_start = cupy.isscalar(start)
-        scalar_stop = cupy.isscalar(stop)
-        if scalar_start and scalar_stop:
-            return _linspace_scalar(
-                start, stop, num, endpoint, retstep, dtype)
+    scalar_start = cupy.isscalar(start)
+    scalar_stop = cupy.isscalar(stop)
+    if scalar_start and scalar_stop:
+        return _linspace_scalar(start, stop, num, endpoint, retstep, dtype)
 
-        if not scalar_start:
-            if not (isinstance(start, cupy.ndarray)
-                    and start.dtype.kind == 'f'):
-                start = cupy.asarray(start) * 1.0
+    if not scalar_start:
+        if not (isinstance(start, cupy.ndarray) and start.dtype.kind == 'f'):
+            start = cupy.asarray(start) * 1.0
 
-        if not scalar_stop:
-            if not (isinstance(stop, cupy.ndarray)
-                    and stop.dtype.kind == 'f'):
-                stop = cupy.asarray(stop) * 1.0
+    if not scalar_stop:
+        if not (isinstance(stop, cupy.ndarray) and stop.dtype.kind == 'f'):
+            stop = cupy.asarray(stop) * 1.0
 
-        dt = cupy.result_type(start, stop, float(num))
-        if dtype is None:
-            # In actual implementation, only float is used
-            dtype = dt
+    dt = cupy.result_type(start, stop, float(num))
+    if dtype is None:
+        # In actual implementation, only float is used
+        dtype = dt
 
-        delta = stop - start
+    delta = stop - start
 
-        # ret = cupy.arange(0, num, dtype=dt).reshape((-1,)+(1,)*delta.ndim)
-        ret = cupy.empty((num,), dtype=dt)
-        _arange_ufunc(0.0, 1.0, ret, dtype=dt)
-        ret = ret.reshape((-1,) + (1,) * delta.ndim)
+    # ret = cupy.arange(0, num, dtype=dt).reshape((-1,) + (1,) * delta.ndim)
+    ret = cupy.empty((num,), dtype=dt)
+    _arange_ufunc(0.0, 1.0, ret, dtype=dt)
+    ret = ret.reshape((-1,) + (1,) * delta.ndim)
 
-        # In-place multiplication y *= delta/div is faster, but prevents the
-        # multiplicant from overriding what class is produced, and thus
-        # prevents, e.g. use of Quantities, see numpy#7142. Hence, we multiply
-        # in place only for standard scalar types.
-        if num > 1:
-            step = delta / div
-            if cupy.any(step == 0):
-                # Special handling for denormal numbers, numpy#5437
-                ret /= div
-                ret = ret * delta
-            else:
-                ret = ret * step
-        else:
-            # 0 and 1 item long sequences have an undefined step
-            step = float('nan')
-            # Multiply with delta to allow possible override of output class.
+    # In-place multiplication y *= delta/div is faster, but prevents the
+    # multiplicant from overriding what class is produced, and thus prevents,
+    # e.g. use of Quantities, see numpy#7142. Hence, we multiply in place only
+    # for standard scalar types.
+    if num > 1:
+        step = delta / div
+        if cupy.any(step == 0):
+            # Special handling for denormal numbers, numpy#5437
+            ret /= div
             ret = ret * delta
-
-        ret += start
-        if endpoint and num > 1:
-            ret[-1] = stop
-
-        if axis != 0:
-            ret = cupy.moveaxis(ret, 0, axis)
-
-        if cupy.issubdtype(dtype, cupy.integer):
-            cupy.floor(ret, out=ret)
-
-        ret = ret.astype(dtype, copy=False)
-
-        if retstep:
-            return ret, step
         else:
-            return ret
+            ret = ret * step
+    else:
+        # 0 and 1 item long sequences have an undefined step
+        step = float('nan')
+        # Multiply with delta to allow possible override of output class.
+        ret = ret * delta
 
-    if device is None:
-        return _make()
-    return _on_device(_get_device_id(device), _make)
+    ret += start
+    if endpoint and num > 1:
+        ret[-1] = stop
+
+    if axis != 0:
+        ret = cupy.moveaxis(ret, 0, axis)
+
+    if cupy.issubdtype(dtype, cupy.integer):
+        cupy.floor(ret, out=ret)
+
+    ret = ret.astype(dtype, copy=False)
+
+    if retstep:
+        return ret, step
+    else:
+        return ret
 
 
 def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None,
