@@ -3370,7 +3370,19 @@ cdef _ndarray_base _ndarray_init(
     return ret
 
 
-cpdef _ndarray_base empty_like(
+cdef inline int _device_arg_to_id(object dev_arg) except? -1:
+    """Normalizes a non-``None`` ``device=`` argument to an integer id."""
+    if isinstance(dev_arg, device.Device):
+        return (<device.Device>dev_arg).id
+    # bool is an int subclass; reject it so True/False aren't devices 1/0.
+    if isinstance(dev_arg, int) and not isinstance(dev_arg, bool):
+        return dev_arg
+    raise TypeError(
+        'device must be an int or cupy.cuda.Device, got '
+        f'{type(dev_arg).__name__!r}')
+
+
+cpdef _ndarray_base _empty_like_core(
         prototype, dtype=None, order='K', subok=None, shape=None):
     """Returns a new array with same shape and dtype of a given array.
 
@@ -3422,6 +3434,50 @@ cpdef _ndarray_base empty_like(
         memptr = cupy.empty(internal.prod_sequence(shape), dtype=dtype).data
         return ndarray(shape, dtype, memptr, strides, order)
     return ndarray(shape, dtype, order=order)
+
+
+def empty_like(prototype, dtype=None, order='K', subok=None,
+               shape=None, *, device=None):  # no-cython-lint
+    """Returns a new array with same shape and dtype of a given array.
+
+    This function currently does not support ``subok`` option.
+
+    Args:
+        a (cupy.ndarray): Base array.
+        dtype (data-type, optional): Data type specifier.
+            The data type of ``a`` is used by default.
+        order ({'C', 'F', 'A', or 'K'}): Overrides the memory layout of the
+            result. ``'C'`` means C-order, ``'F'`` means F-order, ``'A'`` means
+            ``'F'`` if ``a`` is Fortran contiguous, ``'C'`` otherwise.
+            ``'K'`` means match the layout of ``a`` as closely as possible.
+        subok: Not supported yet, must be None.
+        shape (int or tuple of ints): Overrides the shape of the result. If
+            ``order='K'`` and the number of dimensions is unchanged, will try
+            to keep order, otherwise, ``order='C'`` is implied.
+        device (int or cupy.cuda.Device, optional): The device on which the
+            array is allocated. ``None`` (default) uses the current device.
+
+    Returns:
+        cupy.ndarray: A new array with same shape and dtype of ``a`` with
+        elements not initialized.
+
+    .. seealso:: :func:`numpy.empty_like`
+
+    """
+    cdef int dev, prev
+    if device is None:
+        return _empty_like_core(prototype, dtype, order, subok, shape)
+    # Call cudart directly and keep no state, following CuPy's convention of
+    # not wrapping internal device switches in a context manager.
+    dev = _device_arg_to_id(device)
+    prev = runtime.getDevice()
+    if dev != prev:
+        runtime.setDevice(dev)
+    try:
+        return _empty_like_core(prototype, dtype, order, subok, shape)
+    finally:
+        if dev != prev:
+            runtime.setDevice(prev)
 
 
 cdef _ndarray_base _create_ndarray_from_shape_strides(

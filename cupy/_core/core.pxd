@@ -119,7 +119,7 @@ cpdef _ndarray_base _convert_object_with_cuda_array_interface(a)
 
 cdef _ndarray_base _ndarray_init(
     subtype, const shape_t& shape, dtype, obj, bint c_order=*)
-cpdef _ndarray_base empty_like(
+cpdef _ndarray_base _empty_like_core(
     prototype, dtype=*, order=*, subok=*, shape=*)
 
 cdef _ndarray_base _create_ndarray_from_shape_strides(

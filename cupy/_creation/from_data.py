@@ -4,10 +4,11 @@ import numpy
 
 from cupy import _core
 from cupy._core import fusion
+from cupy._creation._device import _on_device
 
 
 def array(obj, dtype=None, copy=True, order='K', subok=False, ndmin=0, *,
-          blocking=False):
+          blocking=False, device=None):
     """Creates an array on the current device.
 
     This function currently does not support the ``subok`` option.
@@ -38,6 +39,8 @@ def array(obj, dtype=None, copy=True, order='K', subok=False, ndmin=0, *,
             the source ``obj`` without proper ordering while copying would
             result in a race condition. If set to ``True``, the copy is
             synchronous (with respect to the host).
+        device (int or cupy.cuda.Device, optional): The device on which the
+            array is allocated. ``None`` (default) uses the current device.
 
     Returns:
         cupy.ndarray: An array on the current device.
@@ -53,10 +56,14 @@ def array(obj, dtype=None, copy=True, order='K', subok=False, ndmin=0, *,
     .. seealso:: :func:`numpy.array`
 
     """
+    if device is not None:
+        return _on_device(device, array, obj, dtype, copy, order, subok,
+                          ndmin, blocking=blocking)
     return _core.array(obj, dtype, copy, order, subok, ndmin, blocking)
 
 
-def asarray(a, dtype=None, order=None, *, copy=None, blocking=False):
+def asarray(a, dtype=None, order=None, *, copy=None, blocking=False,
+            device=None):
     """Converts an object to array.
 
     This is equivalent to ``array(a, dtype, copy=False, order=order)``.
@@ -78,6 +85,8 @@ def asarray(a, dtype=None, order=None, *, copy=None, blocking=False):
             the source ``a`` without proper ordering while copying would
             result in a race condition. If set to ``True``, the copy is
             synchronous (with respect to the host).
+        device (int or cupy.cuda.Device, optional): The device on which the
+            array is allocated. ``None`` (default) uses the current device.
 
     Returns:
         cupy.ndarray: An array on the current device. If ``a`` is already on
@@ -91,10 +100,14 @@ def asarray(a, dtype=None, order=None, *, copy=None, blocking=False):
     .. seealso:: :func:`numpy.asarray`
 
     """
+    if device is not None:
+        return _on_device(device, asarray, a, dtype, order, copy=copy,
+                          blocking=blocking)
     return _core.array(a, dtype, copy, order, blocking=blocking)
 
 
-def asanyarray(a, dtype=None, order=None, *, copy=None, blocking=False):
+def asanyarray(a, dtype=None, order=None, *, copy=None, blocking=False,
+               device=None):
     """Converts an object to array.
 
     This is currently equivalent to :func:`cupy.asarray`, since there is no
@@ -105,6 +118,9 @@ def asanyarray(a, dtype=None, order=None, *, copy=None, blocking=False):
     .. seealso:: :func:`cupy.asarray`, :func:`numpy.asanyarray`
 
     """
+    if device is not None:
+        return _on_device(device, asanyarray, a, dtype, order, copy=copy,
+                          blocking=blocking)
     return _core.array(a, dtype, copy, order, blocking=blocking)
 
 
