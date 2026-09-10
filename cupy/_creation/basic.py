@@ -5,7 +5,8 @@ from typing import Any
 import numpy
 
 import cupy
-from cupy._core.core import empty_like as _empty_like
+from cupy._core.core import _empty_like_core as _empty_like
+from cupy._core.core import empty_like  # NOQA: F401  (re-export)
 from cupy._creation._device import _on_device
 from cupy.typing._types import (
     _OrderKACF, _OrderCF, _ShapeLike, DTypeLike, NDArray,
@@ -38,47 +39,6 @@ def empty(
     if device is not None:
         return _on_device(device, empty, shape, dtype, order)
     return cupy.ndarray(shape, dtype, order=order)
-
-
-def empty_like(
-        prototype: NDArray[Any],
-        dtype: DTypeLike | None = None,
-        order: _OrderKACF = 'K',
-        subok: None = None,
-        shape: _ShapeLike | None = None,
-        *,
-        device=None,
-) -> NDArray[Any]:
-    """Returns a new array with same shape and dtype of a given array.
-
-    This function currently does not support ``subok`` option.
-
-    Args:
-        a (cupy.ndarray): Base array.
-        dtype (data-type, optional): Data type specifier.
-            The data type of ``a`` is used by default.
-        order ({'C', 'F', 'A', or 'K'}): Overrides the memory layout of the
-            result. ``'C'`` means C-order, ``'F'`` means F-order, ``'A'`` means
-            ``'F'`` if ``a`` is Fortran contiguous, ``'C'`` otherwise.
-            ``'K'`` means match the layout of ``a`` as closely as possible.
-        subok: Not supported yet, must be None.
-        shape (int or tuple of ints): Overrides the shape of the result. If
-            ``order='K'`` and the number of dimensions is unchanged, will try
-            to keep order, otherwise, ``order='C'`` is implied.
-        device (int or cupy.cuda.Device, optional): The device on which the
-            array is allocated. ``None`` (default) uses the current device.
-
-    Returns:
-        cupy.ndarray: A new array with same shape and dtype of ``a`` with
-        elements not initialized.
-
-    .. seealso:: :func:`numpy.empty_like`
-
-    """
-    if device is not None:
-        return _on_device(
-            device, empty_like, prototype, dtype, order, subok, shape)
-    return _empty_like(prototype, dtype, order, subok, shape)
 
 
 def eye(

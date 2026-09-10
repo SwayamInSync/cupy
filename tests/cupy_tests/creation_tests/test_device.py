@@ -105,3 +105,10 @@ class TestDeviceArgument:
     def test_invalid_device_type(self, bad):
         with pytest.raises(TypeError):
             cupy.zeros(3, device=bad)
+
+    @pytest.mark.parametrize('bad', ['cpu', 'cuda:0', 1.0, True])
+    def test_invalid_device_type_like(self, bad):
+        # empty_like validates device= in Cython, separately from the rest.
+        a = cupy.arange(3)
+        with pytest.raises(TypeError):
+            cupy.empty_like(a, device=bad)
